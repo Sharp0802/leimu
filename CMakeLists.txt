@@ -3,6 +3,11 @@ project(leimu LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
 
-include(cmake/OpenGL.cmake)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(GLFW)
+include(GLM)
+include(ImGui)
+include(STB)
 
 add_subdirectory(leimu)
+add_subdirectory(leimu-gears)
