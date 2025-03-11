@@ -21,11 +21,39 @@ using f64 = double;
 
 #include <GLFW/glfw3.h>
 
-#include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
+#include <imgui.h>
 
 #include <glm/glm.hpp>
 
-
 #include <iostream>
+#include <map>
+#include <string>
+
+inline VkResult CreateDebugUtilsMessengerEXT(
+  VkInstance instance,
+  const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
+  const VkAllocationCallbacks *pAllocator,
+  VkDebugUtilsMessengerEXT *pDebugMessenger) {
+
+  if (const auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+    vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"))) {
+
+    return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+  }
+
+  return VK_ERROR_EXTENSION_NOT_PRESENT;
+}
+
+inline void DestroyDebugUtilsMessengerEXT(
+  VkInstance instance,
+  VkDebugUtilsMessengerEXT debugMessenger,
+  const VkAllocationCallbacks *pAllocator) {
+
+  if (const auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+      vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"))) {
+
+    func(instance, debugMessenger, pAllocator);
+  }
+}
