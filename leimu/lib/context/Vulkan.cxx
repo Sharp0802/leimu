@@ -46,6 +46,7 @@ std::vector<const char*> GetLayers() {
   return RequiredLayers;
 }
 
+// ReSharper disable once CppDFAConstantFunctionResult
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
   const VkDebugUtilsMessageSeverityFlagBitsEXT severity,
   VkDebugUtilsMessageTypeFlagsEXT,
@@ -120,7 +121,7 @@ static VkInstance CreateInstance(const leimu::App &app) {
   return instance;
 }
 
-static VkDebugUtilsMessengerEXT CreateDebugMessenger(leimu::context::Vulkan &vulkan) {
+static VkDebugUtilsMessengerEXT CreateDebugMessenger(const leimu::context::Vulkan &vulkan) {
   auto info = DebugMessengerCreateInfo;
 
   VkDebugUtilsMessengerEXT messenger;
@@ -132,9 +133,39 @@ static VkDebugUtilsMessengerEXT CreateDebugMessenger(leimu::context::Vulkan &vul
   return messenger;
 }
 
-int RatePhysicalDeviceSuitability(
-  const VkPhysicalDeviceProperties &properties,
-  const VkPhysicalDeviceFeatures &features) {
+static leimu::context::VkQueueFamilyIndices GetQueueFamilies(VkPhysicalDevice device) {
+  leimu::context::VkQueueFamilyIndices indices;
+
+  u32 nFamily;
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &nFamily, nullptr);
+
+  std::vector<VkQueueFamilyProperties> families(nFamily);
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &nFamily, families.data());
+
+  for (u32 i = 0; i < nFamily; i++) {
+    if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+      indices.graphics = i;
+    }
+
+    if (indices) {
+      break;
+    }
+  }
+  if (!indices.graphics.has_value()) {
+    std::println(leimu::errs(), "[vulkan] Couldn't find graphics queue family");
+  }
+
+  return indices;
+}
+
+int RatePhysicalDeviceSuitability(VkPhysicalDevice device) {
+  VkPhysicalDeviceProperties properties;
+  vkGetPhysicalDeviceProperties(device, &properties);
+
+  VkPhysicalDeviceFeatures features;
+  vkGetPhysicalDeviceFeatures(device, &features);
+
+  std::println(leimu::outs(), "[vulkan] [gpu-candidate] {}", properties.deviceName);
 
   auto score = 0;
   //
@@ -151,6 +182,12 @@ int RatePhysicalDeviceSuitability(
   // REQUIRED
   //
   if (!features.geometryShader) {
+    std::println(leimu::outs(), "[vulkan] [gpu-eliminate] '{}' has no geometry shader feature", properties.deviceName);
+    score *= 0;
+  }
+
+  if (!GetQueueFamilies(device)) {
+    std::println(leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't have required queue family", properties.deviceName);
     score *= 0;
   }
 
@@ -169,17 +206,8 @@ static VkPhysicalDevice GetPhysicalDevice(const leimu::context::Vulkan &vulkan) 
   vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, devices.data());
 
   std::multimap<int, VkPhysicalDevice> candidates;
-  for (const auto& device: devices) {
-
-    VkPhysicalDeviceProperties properties;
-    vkGetPhysicalDeviceProperties(device, &properties);
-
-    VkPhysicalDeviceFeatures features;
-    vkGetPhysicalDeviceFeatures(device, &features);
-
-    std::println(leimu::outs(), "[vulkan] [gpu-candidate] {}", properties.deviceName);
-
-    auto score = RatePhysicalDeviceSuitability(properties, features);
+  for (const auto &device : devices) {
+    auto score = RatePhysicalDeviceSuitability(device);
     candidates.insert(std::make_pair(score, device));
   }
 
@@ -198,11 +226,12 @@ static VkPhysicalDevice GetPhysicalDevice(const leimu::context::Vulkan &vulkan) 
 }
 
 leimu::context::Vulkan::Vulkan(const App &app)
-  : _instance(CreateInstance(app))
+  : _instance(CreateInstance(app)),
 #if LEIMU_DEBUG
-    , _debugMessenger(CreateDebugMessenger(*this))
+    _debugMessenger(CreateDebugMessenger(*this)),
 #endif
-    , _physicalDevice(GetPhysicalDevice(*this)) {
+    _physicalDevice(GetPhysicalDevice(*this)),
+    _queues(GetQueueFamilies(_physicalDevice)) {
 }
 
 leimu::context::Vulkan::~Vulkan() {
