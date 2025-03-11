@@ -11,13 +11,13 @@
 #endif
 
 std::ostream &leimu::outs() {
-  std::cerr << "[II] ";
+  std::cout << "[II] " << std::flush;
 
   return std::cout;
 }
 
 std::ostream &leimu::errs() {
-  std::cerr << RED "[EE] " RST;
+  std::cerr << RED "[EE] " RST << std::flush;
 
   return std::cerr;
 }
