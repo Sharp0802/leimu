@@ -9,5 +9,9 @@ include(GLM)
 include(ImGui)
 include(STB)
 
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(LEIMU_DEBUG=1)
+endif ()
+
 add_subdirectory(leimu)
 add_subdirectory(leimu-gears)
