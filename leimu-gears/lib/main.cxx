@@ -1,6 +1,12 @@
-#include <cstdlib>
 #include <leimu/leimu.h>
 
-int main() {
-  return leimu::Run() ? EXIT_SUCCESS : EXIT_FAILURE;
+int main(int, char* argv[]) {
+  leimu::App app(argv[0]);
+  if (!app) {
+    return EXIT_FAILURE;
+  }
+
+  app.run();
+
+  return EXIT_SUCCESS;
 }
