@@ -178,8 +178,7 @@ static VkSurfaceKHR CreateSurface(const leimu::context::GLFW &glfw, const leimu:
 
 // PHYSICAL DEVICE
 
-static leimu::context::VkQueueFamilyIndices GetQueueFamilies(
-  VkPhysicalDevice const device, const VkSurfaceKHR surface) {
+static leimu::context::VkQueueFamilyIndices GetQueueFamilies(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
   leimu::context::VkQueueFamilyIndices indices;
 
   u32 nFamily;
@@ -211,7 +210,7 @@ static leimu::context::VkQueueFamilyIndices GetQueueFamilies(
   return indices;
 }
 
-static bool CheckDeviceExtensionSupport(VkPhysicalDevice const device) {
+static bool CheckDeviceExtensionSupport(const VkPhysicalDevice device) {
   u32 nExtension;
   vkAssert(vkEnumerateDeviceExtensionProperties(device, nullptr, &nExtension, nullptr));
 
@@ -228,7 +227,36 @@ static bool CheckDeviceExtensionSupport(VkPhysicalDevice const device) {
   return requiredExtensions.empty();
 }
 
-int RatePhysicalDeviceSuitability(VkPhysicalDevice const device, VkSurfaceKHR const surface) {
+struct SwapChainSupportDetails {
+  VkSurfaceCapabilitiesKHR capabilities{};
+  std::vector<VkSurfaceFormatKHR> formats{};
+  std::vector<VkPresentModeKHR> presentModes{};
+
+  SwapChainSupportDetails(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities) != VK_SUCCESS) {
+      return;
+    }
+
+    u32 nFormat;
+    vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, nullptr));
+    if (nFormat != 0) {
+      formats.resize(nFormat);
+      vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, formats.data()));
+    }
+
+    u32 nPresentMode;
+    vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, nullptr));
+    if (nPresentMode != 0) {
+      presentModes.resize(nPresentMode);
+      vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, presentModes.data()));
+    }
+  }
+
+  operator bool() const { return !formats.empty() && !presentModes.empty(); }
+  bool operator!() const { return !this->operator bool(); }
+};
+
+static int RatePhysicalDeviceSuitability(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
   VkPhysicalDeviceProperties properties;
   vkGetPhysicalDeviceProperties(device, &properties);
 
@@ -266,6 +294,13 @@ int RatePhysicalDeviceSuitability(VkPhysicalDevice const device, VkSurfaceKHR co
     std::println(
       leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't support required extension", properties.deviceName);
     score *= 0;
+  }
+
+  if (score > 0) {
+    if (const SwapChainSupportDetails support(device, surface); !support) {
+      std::println(leimu::outs(), "[vulkan] [gpu-eliminate] There is no adequate swapchain in '{}'", properties.deviceName);
+      score *= 0;
+    }
   }
 
   return score;
@@ -364,32 +399,106 @@ static VkQueue GetPresentQueue(const leimu::context::Vulkan &vulkan) {
   return queue;
 }
 
+// SWAPCHAIN
 
-struct SwapChainSupportDetails {
-  VkSurfaceCapabilitiesKHR capabilities{};
-  std::vector<VkSurfaceFormatKHR> formats{};
-  std::vector<VkPresentModeKHR> presentModes{};
-
-  SwapChainSupportDetails(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
-    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities) != VK_SUCCESS) {
-      return;
-    }
-
-    u32 nFormat;
-    vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, nullptr));
-    if (nFormat != 0) {
-      formats.resize(nFormat);
-      vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, formats.data()));
-    }
-
-    u32 nPresentMode;
-    vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, nullptr));
-    if (nPresentMode != 0) {
-      presentModes.resize(nPresentMode);
-      vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, presentModes.data()));
+static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats) {
+  for (const auto &format : formats) {
+    if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
+        format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+      return format;
     }
   }
-};
+
+  std::println(leimu::errs(), "[vulkan] [surface] There is no support for SRGB B8G8R8A8 format for surface; Use surface default");
+  return formats[0];
+}
+
+static VkPresentModeKHR ChooseSwapPresentMode(const leimu::context::VkConfig conf, const std::vector<VkPresentModeKHR> &modes) {
+  // FIFO has lower energy usage than other policies
+  if (conf.powerSaving) {
+    return VK_PRESENT_MODE_FIFO_KHR;
+  }
+
+  for (const auto &mode : modes) {
+    if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+      return mode;
+    }
+  }
+
+  // Only FIFO mode is guaranteed to be available
+  return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &cap, const leimu::context::GLFW &glfw) {
+  if (cap.currentExtent.width != std::numeric_limits<u32>::max()) {
+    return cap.currentExtent;
+  }
+
+  i32 w, h;
+  glfwGetFramebufferSize(glfw.window(), &w, &h);
+  assert(w > 0 && h > 0);
+
+  VkExtent2D extent{
+    static_cast<u32>(w),
+    static_cast<u32>(h)
+  };
+
+  extent.width = std::clamp(extent.width, cap.minImageExtent.width, cap.maxImageExtent.width);
+  extent.height = std::clamp(extent.height, cap.minImageExtent.height, cap.maxImageExtent.height);
+
+  return extent;
+}
+
+static VkSwapchainKHR CreateSwapchain(const leimu::context::Vulkan &vulkan, const leimu::context::GLFW& glfw) {
+  SwapChainSupportDetails support{ vulkan.physicalDevice(), vulkan.surface() };
+
+  auto format = ChooseSwapSurfaceFormat(support.formats);
+  auto present = ChooseSwapPresentMode(vulkan.config(), support.presentModes);
+  auto extent = ChooseSwapExtent(support.capabilities, glfw);
+
+  u32 nImage = support.capabilities.minImageCount + 1;
+  if (support.capabilities.maxImageCount > 0 && nImage > support.capabilities.maxImageCount) {
+    nImage = support.capabilities.maxImageCount;
+  }
+
+  VkSwapchainCreateInfoKHR createInfo{
+    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+    .surface = vulkan.surface(),
+    .minImageCount = nImage,
+    .imageFormat = format.format,
+    .imageColorSpace = format.colorSpace,
+    .imageExtent = extent,
+    .imageArrayLayers = 1,
+    .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+    .preTransform = support.capabilities.currentTransform,
+    .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+    .presentMode = present,
+    .clipped = VK_TRUE,
+    .oldSwapchain = VK_NULL_HANDLE,
+  };
+
+  const auto families = GetQueueFamilies(vulkan.physicalDevice(), vulkan.surface());
+  assert(families);
+  const auto indices = families.indices();
+
+  if (families.graphics != families.present) {
+    createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+    createInfo.queueFamilyIndexCount = indices.size();
+    createInfo.pQueueFamilyIndices = indices.data();
+  } else {
+    createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    createInfo.queueFamilyIndexCount = 0;
+    createInfo.pQueueFamilyIndices = nullptr;
+  }
+
+  VkSwapchainKHR swapchain;
+  if (vkCreateSwapchainKHR(vulkan.device(), &createInfo, nullptr, &swapchain) != VK_SUCCESS) {
+    std::println(leimu::errs(), "[vulkan] [surface] Failed to create swapchain");
+    return nullptr;
+  }
+
+  return swapchain;
+}
 
 
 leimu::context::Vulkan::Vulkan(const App &app)
@@ -403,10 +512,13 @@ leimu::context::Vulkan::Vulkan(const App &app)
     _device(CreateLogicalDevice(*this)),
 
     _graphicsQueue(GetGraphicsQueue(*this)),
-    _presentQueue(GetPresentQueue(*this)) {
+    _presentQueue(GetPresentQueue(*this)),
+
+    _swapchain(CreateSwapchain(*this, app.glfw())){
 }
 
 leimu::context::Vulkan::~Vulkan() {
+  vkDestroySwapchainKHR(_device, _swapchain, nullptr);
   vkDestroyDevice(_device, nullptr);
 #if LEIMU_DEBUG
   DestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
@@ -427,5 +539,6 @@ bool leimu::context::Vulkan::operator!() const {
     || !_queueIndices
     || !_device
     || !_graphicsQueue
-    || !_presentQueue;
+    || !_presentQueue
+    || !_swapchain;
 }

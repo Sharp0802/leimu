@@ -18,6 +18,7 @@ class App {
 
   std::string _name;
   VkApplicationInfo _info;
+  context::VkConfig _config;
 
   context::GLFW _glfw;
   context::Vulkan _vulkan;
@@ -30,8 +31,11 @@ public:
 
   void run();
 
+  context::VkConfig& config() { return _config; }
+
   [[nodiscard]] const std::string& name() const { return _name; }
   [[nodiscard]] const VkApplicationInfo& info() const { return _info; }
+  [[nodiscard]] const context::VkConfig& config() const { return _config; }
   [[nodiscard]] const context::GLFW& glfw() const { return _glfw; }
   [[nodiscard]] const context::Vulkan& vulkan() const { return _vulkan; }
 
