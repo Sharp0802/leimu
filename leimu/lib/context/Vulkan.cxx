@@ -4,47 +4,31 @@
 
 #include "leimu/App.h"
 
-const std::vector<const char*> RequiredLayers = {
+// ReSharper disable once CppTemplateArgumentsCanBeDeduced
+const std::vector<const char*> ValidationLayers = {
 #if LEIMU_DEBUG
   "VK_LAYER_KHRONOS_validation"
 #endif
 };
 
-std::vector<const char*> GetExtensions() {
-  u32 nExtension = 0;
-  const auto vExtension = glfwGetRequiredInstanceExtensions(&nExtension);
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+  VkDebugUtilsMessageSeverityFlagBitsEXT,
+  VkDebugUtilsMessageTypeFlagsEXT,
+  const VkDebugUtilsMessengerCallbackDataEXT *,
+  void *);
 
-  std::vector<const char*> extensions;
-  extensions.reserve(nExtension + 2);
-  extensions.assign(vExtension, vExtension + nExtension);
-  extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-  extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-  return extensions;
-}
-
-std::vector<const char*> GetLayers() {
-  u32 nLayer;
-  vkEnumerateInstanceLayerProperties(&nLayer, nullptr);
-
-  std::vector<VkLayerProperties> layers(nLayer);
-  vkEnumerateInstanceLayerProperties(&nLayer, layers.data());
-
-  for (const auto required : RequiredLayers) {
-    auto found = false;
-    for (const auto available : layers) {
-      if (strcmp(required, available.layerName) == 0) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      std::println(leimu::errs(), "[vulkan] [layer] {} missing", required);
-    }
-  }
-
-  return RequiredLayers;
-}
+constexpr VkDebugUtilsMessengerCreateInfoEXT DebugMessengerCreateInfo{
+  .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+  .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
+  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+  .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+  | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+  | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+  .pfnUserCallback = DebugCallback,
+  .pUserData = nullptr
+};
 
 // ReSharper disable once CppDFAConstantFunctionResult
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
@@ -73,21 +57,66 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
   return VK_FALSE;
 }
 
-constexpr VkDebugUtilsMessengerCreateInfoEXT DebugMessengerCreateInfo{
-  .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-  .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
-  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
-  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
-  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-  .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
-  | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
-  | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-  .pfnUserCallback = DebugCallback,
-  .pUserData = nullptr
-};
+#if LEIMU_DEBUG
+// ReSharper disable once CppDeclaratorNeverUsed
+// NOLINTNEXTLINE(*-reserved-identifier)
+static void __vkAssert(const VkResult result, std::string op, std::string file, int line) {
+  if (result != VK_SUCCESS) {
+    std::println(leimu::errs(), "[vulkan] [assert] '{}' fails ({}:{})", op, file, line);
+  }
+}
+
+#define vkAssert(condition) __vkAssert(condition, #condition, __FILE__, __LINE__)
+#else
+#define vkAssert(condition) condition
+#endif
+
+std::vector<const char*> GetInstanceExtensions() {
+  u32 nExtension = 0;
+  const auto vExtension = glfwGetRequiredInstanceExtensions(&nExtension);
+
+  std::vector<const char*> extensions;
+  extensions.reserve(nExtension + 2);
+  extensions.assign(vExtension, vExtension + nExtension);
+  extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+  return extensions;
+}
+
+std::vector<const char*> GetDeviceExtensions() {
+  return {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+  };
+}
+
+std::vector<const char*> GetLayers() {
+  u32 nLayer;
+  vkAssert(vkEnumerateInstanceLayerProperties(&nLayer, nullptr));
+
+  std::vector<VkLayerProperties> layers(nLayer);
+  vkAssert(vkEnumerateInstanceLayerProperties(&nLayer, layers.data()));
+
+  for (const auto required : ValidationLayers) {
+    auto found = false;
+    for (const auto available : layers) {
+      if (strcmp(required, available.layerName) == 0) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      std::println(leimu::errs(), "[vulkan] [layer] {} missing", required);
+    }
+  }
+
+  return ValidationLayers;
+}
+
+// INSTANCE
 
 static VkInstance CreateInstance(const leimu::App &app) {
-  auto extensions = GetExtensions();
+  auto extensions = GetInstanceExtensions();
   for (const auto ext : extensions) {
     std::println(leimu::outs(), "[vulkan] [ext] {}", ext);
   }
@@ -108,7 +137,7 @@ static VkInstance CreateInstance(const leimu::App &app) {
   };
 
 #if LEIMU_DEBUG
-  auto debugCreateInfo = DebugMessengerCreateInfo;
+  constexpr auto debugCreateInfo = DebugMessengerCreateInfo;
   createInfo.pNext = &debugCreateInfo;
 #endif
 
@@ -121,8 +150,10 @@ static VkInstance CreateInstance(const leimu::App &app) {
   return instance;
 }
 
+// DEBUG MESSENGER
+
 static VkDebugUtilsMessengerEXT CreateDebugMessenger(const leimu::context::Vulkan &vulkan) {
-  auto info = DebugMessengerCreateInfo;
+  constexpr auto info = DebugMessengerCreateInfo;
 
   VkDebugUtilsMessengerEXT messenger;
   if (CreateDebugUtilsMessengerEXT(vulkan.instance(), &info, nullptr, &messenger) != VK_SUCCESS) {
@@ -133,7 +164,22 @@ static VkDebugUtilsMessengerEXT CreateDebugMessenger(const leimu::context::Vulka
   return messenger;
 }
 
-static leimu::context::VkQueueFamilyIndices GetQueueFamilies(VkPhysicalDevice device) {
+// SURFACE
+
+static VkSurfaceKHR CreateSurface(const leimu::context::GLFW &glfw, const leimu::context::Vulkan &vulkan) {
+  VkSurfaceKHR surface;
+  if (glfwCreateWindowSurface(vulkan.instance(), glfw.window(), nullptr, &surface) != VK_SUCCESS) {
+    std::println(leimu::errs(), "[glfw] Couldn't create window surface");
+    return nullptr;
+  }
+
+  return surface;
+}
+
+// PHYSICAL DEVICE
+
+static leimu::context::VkQueueFamilyIndices GetQueueFamilies(
+  VkPhysicalDevice const device, const VkSurfaceKHR surface) {
   leimu::context::VkQueueFamilyIndices indices;
 
   u32 nFamily;
@@ -147,6 +193,12 @@ static leimu::context::VkQueueFamilyIndices GetQueueFamilies(VkPhysicalDevice de
       indices.graphics = i;
     }
 
+    VkBool32 present = false;
+    vkAssert(vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &present));
+    if (present) {
+      indices.present = i;
+    }
+
     if (indices) {
       break;
     }
@@ -155,10 +207,28 @@ static leimu::context::VkQueueFamilyIndices GetQueueFamilies(VkPhysicalDevice de
     std::println(leimu::errs(), "[vulkan] Couldn't find graphics queue family");
   }
 
+
   return indices;
 }
 
-int RatePhysicalDeviceSuitability(VkPhysicalDevice device) {
+static bool CheckDeviceExtensionSupport(VkPhysicalDevice const device) {
+  u32 nExtension;
+  vkAssert(vkEnumerateDeviceExtensionProperties(device, nullptr, &nExtension, nullptr));
+
+  std::vector<VkExtensionProperties> availableExtensions(nExtension);
+  vkAssert(vkEnumerateDeviceExtensionProperties(device, nullptr, &nExtension, availableExtensions.data()));
+
+  auto extensions = GetDeviceExtensions();
+  std::set<std::string> requiredExtensions(extensions.begin(), extensions.end());
+
+  for (const auto &[name, _] : availableExtensions) {
+    requiredExtensions.erase(name);
+  }
+
+  return requiredExtensions.empty();
+}
+
+int RatePhysicalDeviceSuitability(VkPhysicalDevice const device, VkSurfaceKHR const surface) {
   VkPhysicalDeviceProperties properties;
   vkGetPhysicalDeviceProperties(device, &properties);
 
@@ -186,8 +256,15 @@ int RatePhysicalDeviceSuitability(VkPhysicalDevice device) {
     score *= 0;
   }
 
-  if (!GetQueueFamilies(device)) {
-    std::println(leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't have required queue family", properties.deviceName);
+  if (!GetQueueFamilies(device, surface)) {
+    std::println(
+      leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't have required queue family", properties.deviceName);
+    score *= 0;
+  }
+
+  if (!CheckDeviceExtensionSupport(device)) {
+    std::println(
+      leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't support required extension", properties.deviceName);
     score *= 0;
   }
 
@@ -196,18 +273,18 @@ int RatePhysicalDeviceSuitability(VkPhysicalDevice device) {
 
 static VkPhysicalDevice GetPhysicalDevice(const leimu::context::Vulkan &vulkan) {
   u32 nDevice;
-  vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, nullptr);
+  vkAssert(vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, nullptr));
   if (!nDevice) {
     std::println(leimu::errs(), "[vulkan] Couldn't find any GPU");
     return nullptr;
   }
 
   std::vector<VkPhysicalDevice> devices(nDevice);
-  vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, devices.data());
+  vkAssert(vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, devices.data()));
 
   std::multimap<int, VkPhysicalDevice> candidates;
   for (const auto &device : devices) {
-    auto score = RatePhysicalDeviceSuitability(device);
+    auto score = RatePhysicalDeviceSuitability(device, vulkan.surface());
     candidates.insert(std::make_pair(score, device));
   }
 
@@ -225,20 +302,119 @@ static VkPhysicalDevice GetPhysicalDevice(const leimu::context::Vulkan &vulkan) 
   return nullptr;
 }
 
+// LOGICAL DEVICE
+
+static VkDevice CreateLogicalDevice(const leimu::context::Vulkan &vulkan) {
+  auto [graphics, present] = vulkan.queueIndices();
+
+  const std::set families = {graphics.value(), present.value()};
+  std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+  queueCreateInfos.reserve(families.size());
+
+  f32 priority = 1.0f;
+  for (const u32 family : families) {
+    queueCreateInfos.push_back(
+      {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = family,
+        .queueCount = 1,
+        .pQueuePriorities = &priority,
+      });
+  }
+
+  VkPhysicalDeviceFeatures features{};
+
+  auto extensions = GetDeviceExtensions();
+
+  auto layers = GetLayers();
+  VkDeviceCreateInfo createInfo{
+    .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    .queueCreateInfoCount = static_cast<u32>(queueCreateInfos.size()),
+    .pQueueCreateInfos = queueCreateInfos.data(),
+
+    // For older-implementations:
+    // (In up-to-date implementations, `enabledLayerCount` and `ppEnabledLayerNames` are ignored)
+    .enabledLayerCount = static_cast<u32>(layers.size()),
+    .ppEnabledLayerNames = layers.data(),
+
+    .enabledExtensionCount = static_cast<u32>(extensions.size()),
+    .ppEnabledExtensionNames = extensions.data(),
+
+    .pEnabledFeatures = &features,
+  };
+
+  VkDevice device;
+  if (vkCreateDevice(vulkan.physicalDevice(), &createInfo, nullptr, &device) != VK_SUCCESS) {
+    std::println(leimu::errs(), "[vulkan] Couldn't create logical device");
+    return nullptr;
+  }
+
+  return device;
+}
+
+static VkQueue GetGraphicsQueue(const leimu::context::Vulkan &vulkan) {
+  VkQueue queue;
+  vkGetDeviceQueue(vulkan.device(), vulkan.queueIndices().graphics.value(), 0, &queue);
+  return queue;
+}
+
+static VkQueue GetPresentQueue(const leimu::context::Vulkan &vulkan) {
+  VkQueue queue;
+  vkGetDeviceQueue(vulkan.device(), vulkan.queueIndices().present.value(), 0, &queue);
+  return queue;
+}
+
+
+struct SwapChainSupportDetails {
+  VkSurfaceCapabilitiesKHR capabilities{};
+  std::vector<VkSurfaceFormatKHR> formats{};
+  std::vector<VkPresentModeKHR> presentModes{};
+
+  SwapChainSupportDetails(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities) != VK_SUCCESS) {
+      return;
+    }
+
+    u32 nFormat;
+    vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, nullptr));
+    if (nFormat != 0) {
+      formats.resize(nFormat);
+      vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, formats.data()));
+    }
+
+    u32 nPresentMode;
+    vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, nullptr));
+    if (nPresentMode != 0) {
+      presentModes.resize(nPresentMode);
+      vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, presentModes.data()));
+    }
+  }
+};
+
+
 leimu::context::Vulkan::Vulkan(const App &app)
   : _instance(CreateInstance(app)),
 #if LEIMU_DEBUG
     _debugMessenger(CreateDebugMessenger(*this)),
 #endif
+    _surface(CreateSurface(app.glfw(), *this)),
     _physicalDevice(GetPhysicalDevice(*this)),
-    _queues(GetQueueFamilies(_physicalDevice)) {
+    _queueIndices(GetQueueFamilies(_physicalDevice, _surface)),
+    _device(CreateLogicalDevice(*this)),
+
+    _graphicsQueue(GetGraphicsQueue(*this)),
+    _presentQueue(GetPresentQueue(*this)) {
 }
 
 leimu::context::Vulkan::~Vulkan() {
+  vkDestroyDevice(_device, nullptr);
 #if LEIMU_DEBUG
   DestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
 #endif
+  vkDestroySurfaceKHR(_instance, _surface, nullptr);
   vkDestroyInstance(_instance, nullptr);
+
+  std::println(outs(), "[vulkan] VkInstance destroyed");
 }
 
 bool leimu::context::Vulkan::operator!() const {
@@ -246,5 +422,10 @@ bool leimu::context::Vulkan::operator!() const {
 #if LEIMU_DEBUG
     || !_debugMessenger
 #endif
-    || !_physicalDevice;
+    || !_physicalDevice
+    || !_surface
+    || !_queueIndices
+    || !_device
+    || !_graphicsQueue
+    || !_presentQueue;
 }

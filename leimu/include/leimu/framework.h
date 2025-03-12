@@ -29,6 +29,8 @@ using f64 = double;
 
 #include <iostream>
 #include <map>
+#include <set>
+#include <vector>
 #include <string>
 
 inline VkResult CreateDebugUtilsMessengerEXT(
