@@ -1,6 +1,6 @@
 #include "leimu/framework.h"
 
-#include "leimu/context/Vulkan.h"
+#include "leimu/feature/Vulkan.h"
 
 #include "leimu/App.h"
 
@@ -134,7 +134,7 @@ static bool CheckDeviceExtensionSupport(const VkPhysicalDevice device) {
 
 // INITIALIZERS
 
-std::optional<VkSurfaceCapabilitiesKHR> leimu::context::GetSurfaceCapabilities(
+std::optional<VkSurfaceCapabilitiesKHR> leimu::feature::GetSurfaceCapabilities(
   const VulkanPhysicalDevice &device,
   const VulkanSurface &surface) {
 
@@ -145,7 +145,7 @@ std::optional<VkSurfaceCapabilitiesKHR> leimu::context::GetSurfaceCapabilities(
   return capabilities;
 }
 
-std::vector<VkPresentModeKHR> leimu::context::GetPresentModes(
+std::vector<VkPresentModeKHR> leimu::feature::GetPresentModes(
   const VulkanPhysicalDevice &device,
   const VulkanSurface &surface) noexcept {
 
@@ -160,7 +160,7 @@ std::vector<VkPresentModeKHR> leimu::context::GetPresentModes(
   return presentModes;
 }
 
-std::vector<VkSurfaceFormatKHR> leimu::context::GetSurfaceFormats(
+std::vector<VkSurfaceFormatKHR> leimu::feature::GetSurfaceFormats(
   const VulkanPhysicalDevice &device,
   const VulkanSurface &surface) noexcept {
 
@@ -175,7 +175,7 @@ std::vector<VkSurfaceFormatKHR> leimu::context::GetSurfaceFormats(
   return formats;
 }
 
-VkSurfaceFormatKHR leimu::context::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats) noexcept {
+VkSurfaceFormatKHR leimu::feature::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats) noexcept {
   for (const auto &format : formats) {
     if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
       format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
@@ -188,7 +188,7 @@ VkSurfaceFormatKHR leimu::context::ChooseSwapSurfaceFormat(const std::vector<VkS
   return formats[0];
 }
 
-VkPresentModeKHR leimu::context::ChooseSwapPresentMode(
+VkPresentModeKHR leimu::feature::ChooseSwapPresentMode(
   const std::vector<VkPresentModeKHR> &modes,
   const bool lowEnergy) noexcept {
   // FIFO has lower energy usage than other policies
@@ -206,7 +206,7 @@ VkPresentModeKHR leimu::context::ChooseSwapPresentMode(
   return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D leimu::context::ChooseSwapExtent(
+VkExtent2D leimu::feature::ChooseSwapExtent(
   const VkSurfaceCapabilitiesKHR &cap,
   const GLFW &glfw) noexcept {
   if (cap.currentExtent.width != std::numeric_limits<u32>::max()) {
@@ -228,7 +228,7 @@ VkExtent2D leimu::context::ChooseSwapExtent(
   return extent;
 }
 
-int leimu::context::RatePhysicalDeviceSuitability(
+int leimu::feature::RatePhysicalDeviceSuitability(
   const VulkanPhysicalDevice &device,
   const VulkanSurface &surface) noexcept {
   VkPhysicalDeviceProperties properties;
@@ -283,7 +283,7 @@ int leimu::context::RatePhysicalDeviceSuitability(
 }
 
 
-leimu::context::VulkanInstance leimu::context::CreateInstance(VkApplicationInfo info) noexcept {
+leimu::feature::VulkanInstance leimu::feature::CreateInstance(VkApplicationInfo info) noexcept {
   auto extensions = GetInstanceExtensions();
   for (const auto ext : extensions) {
     std::println(outs(), "[vulkan] [ext] {}", ext);
@@ -323,7 +323,7 @@ leimu::context::VulkanInstance leimu::context::CreateInstance(VkApplicationInfo 
 }
 
 #if LEIMU_DEBUG
-leimu::context::VulkanDebugUtilsMessenger leimu::context::CreateDebugUtilsMessenger(
+leimu::feature::VulkanDebugUtilsMessenger leimu::feature::CreateDebugUtilsMessenger(
   const VulkanInstance &instance) noexcept {
   constexpr auto info = DebugMessengerCreateInfo;
 
@@ -341,7 +341,7 @@ leimu::context::VulkanDebugUtilsMessenger leimu::context::CreateDebugUtilsMessen
 }
 #endif
 
-leimu::context::VulkanSurface leimu::context::CreateSurface(
+leimu::feature::VulkanSurface leimu::feature::CreateSurface(
   const VulkanInstance &instance,
   const GLFW &glfw) noexcept {
   VkSurfaceKHR surface;
@@ -357,7 +357,7 @@ leimu::context::VulkanSurface leimu::context::CreateSurface(
   };
 }
 
-leimu::context::VulkanPhysicalDevice leimu::context::GetPhysicalDevice(
+leimu::feature::VulkanPhysicalDevice leimu::feature::GetPhysicalDevice(
   const VulkanInstance &instance,
   const VulkanSurface &surface) noexcept {
   u32 nDevice;
@@ -394,7 +394,7 @@ leimu::context::VulkanPhysicalDevice leimu::context::GetPhysicalDevice(
   return nullptr;
 }
 
-leimu::context::VulkanQueueFamilyIndices leimu::context::GetQueueFamilyIndices(
+leimu::feature::VulkanQueueFamilyIndices leimu::feature::GetQueueFamilyIndices(
   const VulkanPhysicalDevice &device,
   const VulkanSurface &surface) noexcept {
   u32 nFamily;
@@ -426,7 +426,7 @@ leimu::context::VulkanQueueFamilyIndices leimu::context::GetQueueFamilyIndices(
   return std::make_shared<VkQueueFamilyIndices_T>(graphics, present);
 }
 
-leimu::context::VulkanDevice leimu::context::CreateDevice(
+leimu::feature::VulkanDevice leimu::feature::CreateDevice(
   const VulkanPhysicalDevice &phy,
   const VulkanSurface &surface) noexcept {
   auto indices = GetQueueFamilyIndices(phy, surface);
@@ -481,7 +481,7 @@ leimu::context::VulkanDevice leimu::context::CreateDevice(
   };
 }
 
-leimu::context::VulkanSwapchain leimu::context::CreateSwapchain(
+leimu::feature::VulkanSwapchain leimu::feature::CreateSwapchain(
   const VulkanPhysicalDevice &phy,
   const VulkanDevice &dev,
   const VulkanSurface &surface,
@@ -552,7 +552,7 @@ leimu::context::VulkanSwapchain leimu::context::CreateSwapchain(
   };
 }
 
-leimu::context::VulkanQueue leimu::context::GetQueue(
+leimu::feature::VulkanQueue leimu::feature::GetQueue(
   const VulkanDevice &device,
   const u32 index) noexcept {
   VkQueue queue;
@@ -563,7 +563,7 @@ leimu::context::VulkanQueue leimu::context::GetQueue(
   };
 }
 
-leimu::context::Vulkan::Vulkan(const App &app) {
+leimu::feature::Vulkan::Vulkan(const App &app) {
   if (!((_instance = CreateInstance(app.info())))) {
     std::println(errs(), "[vulkan] Failed to create instance");
     return;

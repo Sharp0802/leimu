@@ -1,14 +1,14 @@
 #pragma once
 
-#include <memory>
+#include "leimu/framework.h"
 
-#include "Context.h"
+#include "Feature.h"
 
 namespace leimu {
   class App;
 }
 
-namespace leimu::context {
+namespace leimu::feature {
   class GLFW;
 
   struct VkQueueFamilyIndices_T {
@@ -94,7 +94,7 @@ namespace leimu::context {
     const VulkanDevice &device,
     u32 index) noexcept;
 
-  class Vulkan final : public Context<Vulkan> {
+  class Vulkan final : public Feature<Vulkan> {
     VulkanInstance _instance;
 
 #if LEIMU_DEBUG

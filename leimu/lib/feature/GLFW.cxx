@@ -1,12 +1,12 @@
 #include "leimu/framework.h"
 
-#include "leimu/context/GLFW.h"
+#include "leimu/feature/GLFW.h"
 
 static void PrintError(int error, const char *message) {
   std::println(leimu::errs(), "[glfw] {:#X}: {}", error, message);
 }
 
-leimu::context::GLFW::GLFW() : _window(nullptr) {
+leimu::feature::GLFW::GLFW() : _window(nullptr) {
   glfwSetErrorCallback(PrintError);
   if (!glfwInit()) {
     return;
@@ -21,11 +21,11 @@ leimu::context::GLFW::GLFW() : _window(nullptr) {
   }
 }
 
-leimu::context::GLFW::~GLFW() {
+leimu::feature::GLFW::~GLFW() {
   glfwDestroyWindow(_window);
   glfwTerminate();
 }
 
-bool leimu::context::GLFW::operator!() const {
+bool leimu::feature::GLFW::operator!() const {
   return !_window;
 }
