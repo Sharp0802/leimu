@@ -11,6 +11,7 @@ const std::vector<const char*> ValidationLayers = {
 #endif
 };
 
+#if LEIMU_DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
   VkDebugUtilsMessageSeverityFlagBitsEXT,
   VkDebugUtilsMessageTypeFlagsEXT,
@@ -57,7 +58,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
   return VK_FALSE;
 }
 
-#if LEIMU_DEBUG
 // ReSharper disable once CppDeclaratorNeverUsed
 // NOLINTNEXTLINE(*-reserved-identifier)
 static void __vkAssert(const VkResult result, std::string op, std::string file, int line) {
@@ -70,6 +70,8 @@ static void __vkAssert(const VkResult result, std::string op, std::string file, 
 #else
 #define vkAssert(condition) condition
 #endif
+
+// LAYERS / EXTENSIONS
 
 std::vector<const char*> GetInstanceExtensions() {
   u32 nExtension = 0;
@@ -113,103 +115,6 @@ std::vector<const char*> GetLayers() {
   return ValidationLayers;
 }
 
-// INSTANCE
-
-static VkInstance CreateInstance(const leimu::App &app) {
-  auto extensions = GetInstanceExtensions();
-  for (const auto ext : extensions) {
-    std::println(leimu::outs(), "[vulkan] [ext] {}", ext);
-  }
-
-  auto layers = GetLayers();
-  for (const auto layer : layers) {
-    std::println(leimu::outs(), "[vulkan] [layer] {}", layer);
-  }
-
-  VkInstanceCreateInfo createInfo = {
-    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-    .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
-    .pApplicationInfo = &app.info(),
-    .enabledLayerCount = static_cast<u32>(layers.size()),
-    .ppEnabledLayerNames = layers.data(),
-    .enabledExtensionCount = static_cast<u32>(extensions.size()),
-    .ppEnabledExtensionNames = extensions.data(),
-  };
-
-#if LEIMU_DEBUG
-  constexpr auto debugCreateInfo = DebugMessengerCreateInfo;
-  createInfo.pNext = &debugCreateInfo;
-#endif
-
-  VkInstance instance;
-  if (const auto result = vkCreateInstance(&createInfo, nullptr, &instance); result != VK_SUCCESS) {
-    std::println(leimu::errs(), "[vulkan] Couldn't create instance");
-    return nullptr;
-  }
-
-  return instance;
-}
-
-// DEBUG MESSENGER
-
-static VkDebugUtilsMessengerEXT CreateDebugMessenger(const leimu::context::Vulkan &vulkan) {
-  constexpr auto info = DebugMessengerCreateInfo;
-
-  VkDebugUtilsMessengerEXT messenger;
-  if (CreateDebugUtilsMessengerEXT(vulkan.instance(), &info, nullptr, &messenger) != VK_SUCCESS) {
-    std::println(leimu::errs(), "[vulkan] Couldn't create messenger");
-    return nullptr;
-  }
-
-  return messenger;
-}
-
-// SURFACE
-
-static VkSurfaceKHR CreateSurface(const leimu::context::GLFW &glfw, const leimu::context::Vulkan &vulkan) {
-  VkSurfaceKHR surface;
-  if (glfwCreateWindowSurface(vulkan.instance(), glfw.window(), nullptr, &surface) != VK_SUCCESS) {
-    std::println(leimu::errs(), "[glfw] Couldn't create window surface");
-    return nullptr;
-  }
-
-  return surface;
-}
-
-// PHYSICAL DEVICE
-
-static leimu::context::VkQueueFamilyIndices GetQueueFamilies(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
-  leimu::context::VkQueueFamilyIndices indices;
-
-  u32 nFamily;
-  vkGetPhysicalDeviceQueueFamilyProperties(device, &nFamily, nullptr);
-
-  std::vector<VkQueueFamilyProperties> families(nFamily);
-  vkGetPhysicalDeviceQueueFamilyProperties(device, &nFamily, families.data());
-
-  for (u32 i = 0; i < nFamily; i++) {
-    if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-      indices.graphics = i;
-    }
-
-    VkBool32 present = false;
-    vkAssert(vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &present));
-    if (present) {
-      indices.present = i;
-    }
-
-    if (indices) {
-      break;
-    }
-  }
-  if (!indices.graphics.has_value()) {
-    std::println(leimu::errs(), "[vulkan] Couldn't find graphics queue family");
-  }
-
-
-  return indices;
-}
-
 static bool CheckDeviceExtensionSupport(const VkPhysicalDevice device) {
   u32 nExtension;
   vkAssert(vkEnumerateDeviceExtensionProperties(device, nullptr, &nExtension, nullptr));
@@ -227,43 +132,112 @@ static bool CheckDeviceExtensionSupport(const VkPhysicalDevice device) {
   return requiredExtensions.empty();
 }
 
-struct SwapChainSupportDetails {
+// INITIALIZERS
+
+std::optional<VkSurfaceCapabilitiesKHR> leimu::context::GetSurfaceCapabilities(
+  const VulkanPhysicalDevice &device,
+  const VulkanSurface &surface) {
+
   VkSurfaceCapabilitiesKHR capabilities{};
-  std::vector<VkSurfaceFormatKHR> formats{};
-  std::vector<VkPresentModeKHR> presentModes{};
+  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.get(), surface.get(), &capabilities) != VK_SUCCESS)
+    return std::nullopt;
 
-  SwapChainSupportDetails(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
-    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities) != VK_SUCCESS) {
-      return;
-    }
+  return capabilities;
+}
 
-    u32 nFormat;
-    vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, nullptr));
-    if (nFormat != 0) {
-      formats.resize(nFormat);
-      vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &nFormat, formats.data()));
-    }
+std::vector<VkPresentModeKHR> leimu::context::GetPresentModes(
+  const VulkanPhysicalDevice &device,
+  const VulkanSurface &surface) noexcept {
 
-    u32 nPresentMode;
-    vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, nullptr));
-    if (nPresentMode != 0) {
-      presentModes.resize(nPresentMode);
-      vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &nPresentMode, presentModes.data()));
+  u32 nPresentMode;
+  vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device.get(), surface.get(), &nPresentMode, nullptr));
+
+  std::vector<VkPresentModeKHR> presentModes(nPresentMode);
+  if (nPresentMode != 0) {
+    vkAssert(vkGetPhysicalDeviceSurfacePresentModesKHR(device.get(), surface.get(), &nPresentMode, presentModes.data()));
+  }
+
+  return presentModes;
+}
+
+std::vector<VkSurfaceFormatKHR> leimu::context::GetSurfaceFormats(
+  const VulkanPhysicalDevice &device,
+  const VulkanSurface &surface) noexcept {
+
+  u32 nFormat;
+  vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device.get(), surface.get(), &nFormat, nullptr));
+
+  std::vector<VkSurfaceFormatKHR> formats(nFormat);
+  if (nFormat != 0) {
+    vkAssert(vkGetPhysicalDeviceSurfaceFormatsKHR(device.get(), surface.get(), &nFormat, formats.data()));
+  }
+
+  return formats;
+}
+
+VkSurfaceFormatKHR leimu::context::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats) noexcept {
+  for (const auto &format : formats) {
+    if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
+      format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+      return format;
     }
   }
 
-  operator bool() const { return !formats.empty() && !presentModes.empty(); }
-  bool operator!() const { return !this->operator bool(); }
-};
+  std::println(
+    errs(), "[vulkan] [surface] There is no support for SRGB B8G8R8A8 format for surface; Use surface default");
+  return formats[0];
+}
 
-static int RatePhysicalDeviceSuitability(const VkPhysicalDevice device, const VkSurfaceKHR surface) {
+VkPresentModeKHR leimu::context::ChooseSwapPresentMode(
+  const std::vector<VkPresentModeKHR> &modes,
+  const bool lowEnergy) noexcept {
+  // FIFO has lower energy usage than other policies
+  if (lowEnergy) {
+    return VK_PRESENT_MODE_FIFO_KHR;
+  }
+
+  for (const auto &mode : modes) {
+    if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+      return mode;
+    }
+  }
+
+  // Only FIFO mode is guaranteed to be available
+  return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D leimu::context::ChooseSwapExtent(
+  const VkSurfaceCapabilitiesKHR &cap,
+  const GLFW &glfw) noexcept {
+  if (cap.currentExtent.width != std::numeric_limits<u32>::max()) {
+    return cap.currentExtent;
+  }
+
+  i32 w, h;
+  glfwGetFramebufferSize(glfw.window(), &w, &h);
+  assert(w > 0 && h > 0);
+
+  VkExtent2D extent{
+    static_cast<u32>(w),
+    static_cast<u32>(h)
+  };
+
+  extent.width = std::clamp(extent.width, cap.minImageExtent.width, cap.maxImageExtent.width);
+  extent.height = std::clamp(extent.height, cap.minImageExtent.height, cap.maxImageExtent.height);
+
+  return extent;
+}
+
+int leimu::context::RatePhysicalDeviceSuitability(
+  const VulkanPhysicalDevice &device,
+  const VulkanSurface &surface) noexcept {
   VkPhysicalDeviceProperties properties;
-  vkGetPhysicalDeviceProperties(device, &properties);
+  vkGetPhysicalDeviceProperties(device.get(), &properties);
 
   VkPhysicalDeviceFeatures features;
-  vkGetPhysicalDeviceFeatures(device, &features);
+  vkGetPhysicalDeviceFeatures(device.get(), &features);
 
-  std::println(leimu::outs(), "[vulkan] [gpu-candidate] {}", properties.deviceName);
+  std::println(outs(), "[vulkan] [gpu-candidate] {}", properties.deviceName);
 
   auto score = 0;
   //
@@ -280,46 +254,125 @@ static int RatePhysicalDeviceSuitability(const VkPhysicalDevice device, const Vk
   // REQUIRED
   //
   if (!features.geometryShader) {
-    std::println(leimu::outs(), "[vulkan] [gpu-eliminate] '{}' has no geometry shader feature", properties.deviceName);
+    std::println(outs(), "[vulkan] [gpu-eliminate] '{}' has no geometry shader feature", properties.deviceName);
     score *= 0;
   }
 
-  if (!GetQueueFamilies(device, surface)) {
+  if (!GetQueueFamilyIndices(device, surface)) {
     std::println(
-      leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't have required queue family", properties.deviceName);
+      outs(), "[vulkan] [gpu-eliminate] '{}' doesn't have required queue family", properties.deviceName);
     score *= 0;
   }
 
-  if (!CheckDeviceExtensionSupport(device)) {
+  if (!CheckDeviceExtensionSupport(device.get())) {
     std::println(
-      leimu::outs(), "[vulkan] [gpu-eliminate] '{}' doesn't support required extension", properties.deviceName);
+      outs(), "[vulkan] [gpu-eliminate] '{}' doesn't support required extension", properties.deviceName);
     score *= 0;
   }
 
-  if (score > 0) {
-    if (const SwapChainSupportDetails support(device, surface); !support) {
-      std::println(leimu::outs(), "[vulkan] [gpu-eliminate] There is no adequate swapchain in '{}'", properties.deviceName);
-      score *= 0;
-    }
+  if (score > 0 ||
+      !GetSurfaceCapabilities(device, surface) ||
+      GetPresentModes(device, surface).empty() ||
+      GetSurfaceFormats(device, surface).empty()) {
+
+    std::println(outs(), "[vulkan] [gpu-eliminate] There is no adequate swapchain in '{}'", properties.deviceName);
+    score *= 0;
   }
 
   return score;
 }
 
-static VkPhysicalDevice GetPhysicalDevice(const leimu::context::Vulkan &vulkan) {
+
+leimu::context::VulkanInstance leimu::context::CreateInstance(VkApplicationInfo info) noexcept {
+  auto extensions = GetInstanceExtensions();
+  for (const auto ext : extensions) {
+    std::println(outs(), "[vulkan] [ext] {}", ext);
+  }
+
+  auto layers = GetLayers();
+  for (const auto layer : layers) {
+    std::println(outs(), "[vulkan] [layer] {}", layer);
+  }
+
+  VkInstanceCreateInfo createInfo = {
+    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+    .pApplicationInfo = &info,
+    .enabledLayerCount = static_cast<u32>(layers.size()),
+    .ppEnabledLayerNames = layers.data(),
+    .enabledExtensionCount = static_cast<u32>(extensions.size()),
+    .ppEnabledExtensionNames = extensions.data(),
+  };
+
+#if LEIMU_DEBUG
+  constexpr auto debugCreateInfo = DebugMessengerCreateInfo;
+  createInfo.pNext = &debugCreateInfo;
+#endif
+
+  VkInstance instance;
+  if (const auto result = vkCreateInstance(&createInfo, nullptr, &instance); result != VK_SUCCESS) {
+    std::println(errs(), "[vulkan] Couldn't create instance");
+    return nullptr;
+  }
+
+  return {
+    instance, [](const VkInstance self) {
+      vkDestroyInstance(self, nullptr);
+    }
+  };
+}
+
+#if LEIMU_DEBUG
+leimu::context::VulkanDebugUtilsMessenger leimu::context::CreateDebugUtilsMessenger(
+  const VulkanInstance &instance) noexcept {
+  constexpr auto info = DebugMessengerCreateInfo;
+
+  VkDebugUtilsMessengerEXT messenger;
+  if (CreateDebugUtilsMessengerEXT(instance.get(), &info, nullptr, &messenger) != VK_SUCCESS) {
+    std::println(errs(), "[vulkan] Couldn't create messenger");
+    return nullptr;
+  }
+
+  return {
+    messenger, [=](const VkDebugUtilsMessengerEXT self) {
+      vkDestroyDebugUtilsMessengerEXT(instance.get(), self, nullptr);
+    }
+  };
+}
+#endif
+
+leimu::context::VulkanSurface leimu::context::CreateSurface(
+  const VulkanInstance &instance,
+  const GLFW &glfw) noexcept {
+  VkSurfaceKHR surface;
+  if (glfwCreateWindowSurface(instance.get(), glfw.window(), nullptr, &surface) != VK_SUCCESS) {
+    std::println(errs(), "[glfw] Couldn't create window surface");
+    return nullptr;
+  }
+
+  return {
+    surface, [=](const VkSurfaceKHR self) {
+      vkDestroySurfaceKHR(instance.get(), self, nullptr);
+    }
+  };
+}
+
+leimu::context::VulkanPhysicalDevice leimu::context::GetPhysicalDevice(
+  const VulkanInstance &instance,
+  const VulkanSurface &surface) noexcept {
   u32 nDevice;
-  vkAssert(vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, nullptr));
+  vkAssert(vkEnumeratePhysicalDevices(instance.get(), &nDevice, nullptr));
   if (!nDevice) {
-    std::println(leimu::errs(), "[vulkan] Couldn't find any GPU");
+    std::println(errs(), "[vulkan] Couldn't find any GPU");
     return nullptr;
   }
 
   std::vector<VkPhysicalDevice> devices(nDevice);
-  vkAssert(vkEnumeratePhysicalDevices(vulkan.instance(), &nDevice, devices.data()));
+  vkAssert(vkEnumeratePhysicalDevices(instance.get(), &nDevice, devices.data()));
 
   std::multimap<int, VkPhysicalDevice> candidates;
   for (const auto &device : devices) {
-    auto score = RatePhysicalDeviceSuitability(device, vulkan.surface());
+    auto score = RatePhysicalDeviceSuitability(proxy(device), surface);
     candidates.insert(std::make_pair(score, device));
   }
 
@@ -329,20 +382,57 @@ static VkPhysicalDevice GetPhysicalDevice(const leimu::context::Vulkan &vulkan) 
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(device, &properties);
 
-    std::println(leimu::outs(), "[vulkan] [gpu-selected] {}", properties.deviceName);
-    return device;
+    std::println(outs(), "[vulkan] [gpu-selected] {}", properties.deviceName);
+    return {
+      device, [](const VkPhysicalDevice) {
+        /* ignore */
+      }
+    };
   }
 
-  std::println(leimu::errs(), "[vulkan] There is no suitable GPU");
+  std::println(errs(), "[vulkan] There is no suitable GPU");
   return nullptr;
 }
 
-// LOGICAL DEVICE
+leimu::context::VulkanQueueFamilyIndices leimu::context::GetQueueFamilyIndices(
+  const VulkanPhysicalDevice &device,
+  const VulkanSurface &surface) noexcept {
+  u32 nFamily;
+  vkGetPhysicalDeviceQueueFamilyProperties(device.get(), &nFamily, nullptr);
 
-static VkDevice CreateLogicalDevice(const leimu::context::Vulkan &vulkan) {
-  auto [graphics, present] = vulkan.queueIndices();
+  std::vector<VkQueueFamilyProperties> families(nFamily);
+  vkGetPhysicalDeviceQueueFamilyProperties(device.get(), &nFamily, families.data());
 
-  const std::set families = {graphics.value(), present.value()};
+  u32 graphics = -1, present = -1;
+
+  for (u32 i = 0; i < nFamily && (graphics == -1 || present == -1); i++) {
+    if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+      graphics = i;
+    }
+
+    VkBool32 supportPresent = false;
+    vkAssert(vkGetPhysicalDeviceSurfaceSupportKHR(device.get(), i, surface.get(), &supportPresent));
+    if (supportPresent) {
+      present = i;
+    }
+  }
+  if (graphics == -1) {
+    std::println(errs(), "[vulkan] Couldn't find graphics queue");
+  }
+  if (present == -1) {
+    std::println(errs(), "[vulkan] Couldn't find present queue");
+  }
+
+  return std::make_shared<VkQueueFamilyIndices_T>(graphics, present);
+}
+
+leimu::context::VulkanDevice leimu::context::CreateDevice(
+  const VulkanPhysicalDevice &phy,
+  const VulkanSurface &surface) noexcept {
+  auto indices = GetQueueFamilyIndices(phy, surface);
+  assert(indices);
+
+  const std::set families = {indices.get()->graphicsQueue, indices.get()->presentQueue};
   std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
   queueCreateInfos.reserve(families.size());
 
@@ -379,166 +469,145 @@ static VkDevice CreateLogicalDevice(const leimu::context::Vulkan &vulkan) {
   };
 
   VkDevice device;
-  if (vkCreateDevice(vulkan.physicalDevice(), &createInfo, nullptr, &device) != VK_SUCCESS) {
-    std::println(leimu::errs(), "[vulkan] Couldn't create logical device");
+  if (vkCreateDevice(phy.get(), &createInfo, nullptr, &device) != VK_SUCCESS) {
+    std::println(errs(), "[vulkan] Couldn't create logical device");
     return nullptr;
   }
 
-  return device;
-}
-
-static VkQueue GetGraphicsQueue(const leimu::context::Vulkan &vulkan) {
-  VkQueue queue;
-  vkGetDeviceQueue(vulkan.device(), vulkan.queueIndices().graphics.value(), 0, &queue);
-  return queue;
-}
-
-static VkQueue GetPresentQueue(const leimu::context::Vulkan &vulkan) {
-  VkQueue queue;
-  vkGetDeviceQueue(vulkan.device(), vulkan.queueIndices().present.value(), 0, &queue);
-  return queue;
-}
-
-// SWAPCHAIN
-
-static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats) {
-  for (const auto &format : formats) {
-    if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
-        format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-      return format;
+  return {
+    device, [](const VkDevice self) {
+      vkDestroyDevice(self, nullptr);
     }
-  }
-
-  std::println(leimu::errs(), "[vulkan] [surface] There is no support for SRGB B8G8R8A8 format for surface; Use surface default");
-  return formats[0];
-}
-
-static VkPresentModeKHR ChooseSwapPresentMode(const leimu::context::VkConfig conf, const std::vector<VkPresentModeKHR> &modes) {
-  // FIFO has lower energy usage than other policies
-  if (conf.powerSaving) {
-    return VK_PRESENT_MODE_FIFO_KHR;
-  }
-
-  for (const auto &mode : modes) {
-    if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-      return mode;
-    }
-  }
-
-  // Only FIFO mode is guaranteed to be available
-  return VK_PRESENT_MODE_FIFO_KHR;
-}
-
-static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &cap, const leimu::context::GLFW &glfw) {
-  if (cap.currentExtent.width != std::numeric_limits<u32>::max()) {
-    return cap.currentExtent;
-  }
-
-  i32 w, h;
-  glfwGetFramebufferSize(glfw.window(), &w, &h);
-  assert(w > 0 && h > 0);
-
-  VkExtent2D extent{
-    static_cast<u32>(w),
-    static_cast<u32>(h)
   };
-
-  extent.width = std::clamp(extent.width, cap.minImageExtent.width, cap.maxImageExtent.width);
-  extent.height = std::clamp(extent.height, cap.minImageExtent.height, cap.maxImageExtent.height);
-
-  return extent;
 }
 
-static VkSwapchainKHR CreateSwapchain(const leimu::context::Vulkan &vulkan, const leimu::context::GLFW& glfw) {
-  SwapChainSupportDetails support{ vulkan.physicalDevice(), vulkan.surface() };
+leimu::context::VulkanSwapchain leimu::context::CreateSwapchain(
+  const VulkanPhysicalDevice &phy,
+  const VulkanDevice &dev,
+  const VulkanSurface &surface,
+  const GLFW &glfw,
+  const bool lowEnergy) noexcept {
 
-  auto format = ChooseSwapSurfaceFormat(support.formats);
-  auto present = ChooseSwapPresentMode(vulkan.config(), support.presentModes);
-  auto extent = ChooseSwapExtent(support.capabilities, glfw);
+  const auto capabilitiesOpt = GetSurfaceCapabilities(phy, surface);
+  const auto formats = GetSurfaceFormats(phy, surface);
+  const auto presents = GetPresentModes(phy, surface);
 
-  u32 nImage = support.capabilities.minImageCount + 1;
-  if (support.capabilities.maxImageCount > 0 && nImage > support.capabilities.maxImageCount) {
-    nImage = support.capabilities.maxImageCount;
+  if (!capabilitiesOpt.has_value() || formats.empty() || presents.empty()) {
+    std::println(errs(), "[vulkan] Invalid swapchain detected");
+    return nullptr;
+  }
+
+  const auto capabilities = capabilitiesOpt.value();
+
+  const auto format = ChooseSwapSurfaceFormat(formats);
+  const auto present = ChooseSwapPresentMode(presents, lowEnergy);
+  const auto extent = ChooseSwapExtent(capabilities, glfw);
+
+  u32 nImage = capabilities.minImageCount + 1;
+  if (capabilities.maxImageCount > 0 && nImage > capabilities.maxImageCount) {
+    nImage = capabilities.maxImageCount;
   }
 
   VkSwapchainCreateInfoKHR createInfo{
     .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-    .surface = vulkan.surface(),
+    .surface = surface.get(),
     .minImageCount = nImage,
     .imageFormat = format.format,
     .imageColorSpace = format.colorSpace,
     .imageExtent = extent,
     .imageArrayLayers = 1,
     .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-    .preTransform = support.capabilities.currentTransform,
+    .preTransform = capabilities.currentTransform,
     .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
     .presentMode = present,
     .clipped = VK_TRUE,
     .oldSwapchain = VK_NULL_HANDLE,
   };
 
-  const auto families = GetQueueFamilies(vulkan.physicalDevice(), vulkan.surface());
+  const auto families = GetQueueFamilyIndices(phy, surface);
   assert(families);
-  const auto indices = families.indices();
+  const auto indices = families->indices();
 
-  if (families.graphics != families.present) {
+  if (families->graphicsQueue != families->presentQueue) {
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
     createInfo.queueFamilyIndexCount = indices.size();
     createInfo.pQueueFamilyIndices = indices.data();
-  } else {
+  }
+  else {
     createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     createInfo.queueFamilyIndexCount = 0;
     createInfo.pQueueFamilyIndices = nullptr;
   }
 
   VkSwapchainKHR swapchain;
-  if (vkCreateSwapchainKHR(vulkan.device(), &createInfo, nullptr, &swapchain) != VK_SUCCESS) {
-    std::println(leimu::errs(), "[vulkan] [surface] Failed to create swapchain");
+  if (vkCreateSwapchainKHR(dev.get(), &createInfo, nullptr, &swapchain) != VK_SUCCESS) {
+    std::println(errs(), "[vulkan] [surface] Failed to create swapchain");
     return nullptr;
   }
 
-  return swapchain;
+  return {
+    swapchain, [=](const VkSwapchainKHR self) {
+      vkDestroySwapchainKHR(dev.get(), self, nullptr);
+    }
+  };
 }
 
-
-leimu::context::Vulkan::Vulkan(const App &app)
-  : _instance(CreateInstance(app)),
-#if LEIMU_DEBUG
-    _debugMessenger(CreateDebugMessenger(*this)),
-#endif
-    _surface(CreateSurface(app.glfw(), *this)),
-    _physicalDevice(GetPhysicalDevice(*this)),
-    _queueIndices(GetQueueFamilies(_physicalDevice, _surface)),
-    _device(CreateLogicalDevice(*this)),
-
-    _graphicsQueue(GetGraphicsQueue(*this)),
-    _presentQueue(GetPresentQueue(*this)),
-
-    _swapchain(CreateSwapchain(*this, app.glfw())){
+leimu::context::VulkanQueue leimu::context::GetQueue(
+  const VulkanDevice &device,
+  const u32 index) noexcept {
+  VkQueue queue;
+  vkGetDeviceQueue(device.get(), index, 0, &queue);
+  return {
+    queue, [](const VkQueue) {
+    }
+  };
 }
 
-leimu::context::Vulkan::~Vulkan() {
-  vkDestroySwapchainKHR(_device, _swapchain, nullptr);
-  vkDestroyDevice(_device, nullptr);
-#if LEIMU_DEBUG
-  DestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
-#endif
-  vkDestroySurfaceKHR(_instance, _surface, nullptr);
-  vkDestroyInstance(_instance, nullptr);
+leimu::context::Vulkan::Vulkan(const App &app) {
+  if (!((_instance = CreateInstance(app.info())))) {
+    std::println(errs(), "[vulkan] Failed to create instance");
+    return;
+  }
 
-  std::println(outs(), "[vulkan] VkInstance destroyed");
-}
-
-bool leimu::context::Vulkan::operator!() const {
-  return !_instance
 #if LEIMU_DEBUG
-    || !_debugMessenger
+  if (!((_debugMessenger = CreateDebugUtilsMessenger(_instance)))) {
+    std::println(errs(), "[vulkan] Failed to create debug messenger");
+    return;
+  }
 #endif
-    || !_physicalDevice
-    || !_surface
-    || !_queueIndices
-    || !_device
-    || !_graphicsQueue
-    || !_presentQueue
-    || !_swapchain;
+
+  if (!((_surface = CreateSurface(_instance, app.glfw())))) {
+    std::println(errs(), "[vulkan] Failed to create surface");
+    return;
+  }
+
+  if (!((_physicalDevice = GetPhysicalDevice(_instance, _surface)))) {
+    std::println(errs(), "[vulkan] Failed to get physical device");
+    return;
+  }
+
+  if (!((_queueIndices = GetQueueFamilyIndices(_physicalDevice, _surface)))) {
+    std::println(errs(), "[vulkan] Failed to get queue indices");
+    return;
+  }
+
+  if (!((_device = CreateDevice(_physicalDevice, _surface)))) {
+    std::println(errs(), "[vulkan] Failed to create device");
+    return;
+  }
+
+  if (!((_graphicsQueue = GetQueue(_device, _queueIndices->graphicsQueue)))) {
+    std::println(errs(), "[vulkan] Failed to get graphics queue");
+    return;
+  }
+
+  if (!((_presentQueue = GetQueue(_device, _queueIndices->presentQueue)))) {
+    std::println(errs(), "[vulkan] Failed to get present queue");
+    return;
+  }
+
+  if (!((_swapchain = CreateSwapchain(_physicalDevice, _device, _surface, app.glfw(), false)))) {
+    std::println(errs(), "[vulkan] Failed to create swapchain");
+    return;
+  }
 }
