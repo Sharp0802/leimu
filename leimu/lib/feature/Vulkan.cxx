@@ -486,52 +486,34 @@ leimu::feature::VulkanDevice leimu::feature::CreateDevice(
 }
 
 leimu::feature::VulkanSwapchain leimu::feature::CreateSwapchain(
-    const VulkanPhysicalDevice &phy,
     const VulkanDevice &dev,
     const VulkanSurface &surface,
-    const GLFW &glfw,
-    const bool lowEnergy) noexcept {
+    const VulkanSurfaceInfo &surfaceInfo,
+    VkExtent2D extent,
+    const VulkanQueueFamilyIndices& families) noexcept {
 
-  const auto capabilitiesOpt = GetSurfaceCapabilities(phy, surface);
-  const auto formats = GetSurfaceFormats(phy, surface);
-  const auto presents = GetPresentModes(phy, surface);
-
-  if (!capabilitiesOpt.has_value() || formats.empty() || presents.empty()) {
-    std::println(errs(), "[vulkan] Invalid swapchain detected");
-    return nullptr;
-  }
-
-  const auto capabilities = capabilitiesOpt.value();
-
-  const auto format = ChooseSwapSurfaceFormat(formats);
-  const auto present = ChooseSwapPresentMode(presents, lowEnergy);
-  const auto extent = ChooseSwapExtent(capabilities, glfw);
-
-  u32 nImage = capabilities.minImageCount + 1;
-  if (capabilities.maxImageCount > 0 && nImage > capabilities.maxImageCount) {
-    nImage = capabilities.maxImageCount;
+  u32 nImage = surfaceInfo->capabilities.minImageCount + 1;
+  if (surfaceInfo->capabilities.maxImageCount > 0 && nImage > surfaceInfo->capabilities.maxImageCount) {
+    nImage = surfaceInfo->capabilities.maxImageCount;
   }
 
   VkSwapchainCreateInfoKHR createInfo{
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
       .surface = surface.get(),
       .minImageCount = nImage,
-      .imageFormat = format.format,
-      .imageColorSpace = format.colorSpace,
+      .imageFormat = surfaceInfo->format.format,
+      .imageColorSpace = surfaceInfo->format.colorSpace,
       .imageExtent = extent,
       .imageArrayLayers = 1,
       .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-      .preTransform = capabilities.currentTransform,
+      .preTransform = surfaceInfo->capabilities.currentTransform,
       .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-      .presentMode = present,
+      .presentMode = surfaceInfo->mode,
       .clipped = VK_TRUE,
       .oldSwapchain = VK_NULL_HANDLE,
   };
 
-  const auto families = GetQueueFamilyIndices(phy, surface);
-  assert(families);
-  const auto indices = families->indices();
-
+  auto indices = families->indices();
   if (families->graphicsQueue != families->presentQueue) {
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
     createInfo.queueFamilyIndexCount = indices.size();
@@ -566,6 +548,27 @@ leimu::feature::VulkanQueue leimu::feature::GetQueue(
   };
 }
 
+leimu::feature::VulkanSurfaceInfo leimu::feature::RetrieveSurfaceInfo(
+    const leimu::feature::VulkanPhysicalDevice &device,
+    const leimu::feature::VulkanSurface &surface,
+    bool latencyRelaxed) noexcept {
+
+  const auto capabilitiesOpt = GetSurfaceCapabilities(device, surface);
+  const auto formats = GetSurfaceFormats(device, surface);
+  const auto presents = GetPresentModes(device, surface);
+
+  if (!capabilitiesOpt.has_value() || formats.empty() || presents.empty()) {
+    std::println(errs(), "[vulkan] Invalid surface detected");
+    return nullptr;
+  }
+
+  const auto capabilities = capabilitiesOpt.value();
+  const auto format = ChooseSwapSurfaceFormat(formats);
+  const auto present = ChooseSwapPresentMode(presents, latencyRelaxed);
+
+  return std::make_shared<VkSurfaceInfo_T>(capabilities, format, present);
+}
+
 leimu::feature::Vulkan::Vulkan(const App &app) {
   VkApplicationInfo info{
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -593,6 +596,11 @@ leimu::feature::Vulkan::Vulkan(const App &app) {
     return;
   }
 
+  if (!((_surfaceInfo = RetrieveSurfaceInfo(_physicalDevice, _surface, app.config()->vulkan().latencyRelaxed)))) {
+    std::println(errs(), "[vulkan] Failed to retrieve surface info");
+    return;
+  }
+
   if (!((_queueIndices = GetQueueFamilyIndices(_physicalDevice, _surface)))) {
     std::println(errs(), "[vulkan] Failed to get queue indices");
     return;
@@ -613,8 +621,9 @@ leimu::feature::Vulkan::Vulkan(const App &app) {
     return;
   }
 
-  if (!((_swapchain = CreateSwapchain(_physicalDevice, _device, _surface, app.glfw(),
-                                      app.config()->vulkan().latencyRelaxed)))) {
+  const auto extent = ChooseSwapExtent(_surfaceInfo->capabilities, app.glfw());
+
+  if (!((_swapchain = CreateSwapchain(_device, _surface, _surfaceInfo, extent, _queueIndices)))) {
     std::println(errs(), "[vulkan] Failed to create swapchain");
     return;
   }

@@ -24,11 +24,18 @@ namespace leimu::feature {
     }
   };
 
+  struct VkSurfaceInfo_T {
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR format;
+    VkPresentModeKHR mode;
+  };
+
 #define LEIMU_VK_T(t, n) using n = std::shared_ptr< t##_T >
 
   LEIMU_VK_T(VkInstance, VulkanInstance);
   LEIMU_VK_T(VkDebugUtilsMessengerEXT, VulkanDebugUtilsMessenger);
   LEIMU_VK_T(VkSurfaceKHR, VulkanSurface);
+  LEIMU_VK_T(VkSurfaceInfo, VulkanSurfaceInfo);
   LEIMU_VK_T(VkPhysicalDevice, VulkanPhysicalDevice);
   LEIMU_VK_T(VkQueueFamilyIndices, VulkanQueueFamilyIndices);
   LEIMU_VK_T(VkDevice, VulkanDevice);
@@ -72,27 +79,32 @@ namespace leimu::feature {
 #if LEIMU_DEBUG
   [[nodiscard]] VulkanDebugUtilsMessenger CreateDebugUtilsMessenger(const VulkanInstance &instance) noexcept;
 #endif
-  [[nodiscard]] VulkanSurface CreateSurface(
+  [[nodiscard]] static VulkanSurface CreateSurface(
     const VulkanInstance &instance,
     const GLFW &glfw) noexcept;
-  [[nodiscard]] VulkanPhysicalDevice GetPhysicalDevice(
+  [[nodiscard]] static VulkanPhysicalDevice GetPhysicalDevice(
     const VulkanInstance &instance,
     const VulkanSurface &surface) noexcept;
-  [[nodiscard]] VulkanQueueFamilyIndices GetQueueFamilyIndices(
+  [[nodiscard]] static VulkanSurfaceInfo RetrieveSurfaceInfo(
+      const leimu::feature::VulkanPhysicalDevice &device,
+      const leimu::feature::VulkanSurface &surface,
+      bool latencyRelaxed) noexcept;
+  [[nodiscard]] static VulkanQueueFamilyIndices GetQueueFamilyIndices(
     const VulkanPhysicalDevice &device,
     const VulkanSurface &surface) noexcept;
-  [[nodiscard]] VulkanDevice CreateDevice(
+  [[nodiscard]] static VulkanDevice CreateDevice(
     const VulkanPhysicalDevice &phy,
     const VulkanSurface &surface) noexcept;
-  [[nodiscard]] VulkanSwapchain CreateSwapchain(
-    const VulkanPhysicalDevice &phy,
+  [[nodiscard]] static VulkanSwapchain CreateSwapchain(
     const VulkanDevice &dev,
     const VulkanSurface &surface,
-    const GLFW &glfw,
-    bool lowEnergy = false) noexcept;
-  [[nodiscard]] VulkanQueue GetQueue(
+    const VulkanSurfaceInfo &surfaceInfo,
+    VkExtent2D extent,
+    const VulkanQueueFamilyIndices& families) noexcept;
+  [[nodiscard]] static VulkanQueue GetQueue(
     const VulkanDevice &device,
     u32 index) noexcept;
+  [[nodiscard]] static std::vector<VkImage> CreateImageViews(VkSurfaceFormatKHR format) noexcept;
 
   class Vulkan final : public Feature<Vulkan> {
     VulkanInstance _instance;
@@ -103,6 +115,8 @@ namespace leimu::feature {
 
     VulkanSurface _surface;
     VulkanPhysicalDevice _physicalDevice;
+    VulkanSurfaceInfo _surfaceInfo;
+
     VulkanQueueFamilyIndices _queueIndices;
     VulkanDevice _device;
 
