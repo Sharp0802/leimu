@@ -34,6 +34,7 @@ using f64 = double;
 #include <string>
 #include <memory>
 
+#if LEIMU_DEBUG
 inline VkResult CreateDebugUtilsMessengerEXT(
   VkInstance instance,
   const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
@@ -60,3 +61,4 @@ inline void DestroyDebugUtilsMessengerEXT(
     func(instance, debugMessenger, pAllocator);
   }
 }
+#endif
