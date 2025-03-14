@@ -1,7 +1,8 @@
 #pragma once
 
-#include "context/GLFW.h"
-#include "context/Vulkan.h"
+#include "Config.h"
+#include "feature/GLFW.h"
+#include "feature/Vulkan.h"
 
 namespace leimu {
 
@@ -9,7 +10,7 @@ class ContextLifetimeNote {
   std::string _finiNote;
 
 public:
-  ContextLifetimeNote(const std::string &init, const std::string &fini);
+  ContextLifetimeNote(const std::string &init, std::string fini);
   ~ContextLifetimeNote();
 };
 
@@ -17,27 +18,24 @@ class App {
   ContextLifetimeNote _beginNote;
 
   std::string _name;
-  VkApplicationInfo _info;
-  context::VkConfig _config;
+  Config _config;
 
-  context::GLFW _glfw;
-  context::Vulkan _vulkan;
+  feature::GLFW _glfw;
+  feature::Vulkan _vulkan;
 
   ContextLifetimeNote _endNote;
 
 public:
-  App(std::string name);
+  App(std::string name, Config config);
   ~App();
 
   void run();
 
-  context::VkConfig& config() { return _config; }
-
+  [[nodiscard]] Config config() { return _config; }
+  
   [[nodiscard]] const std::string& name() const { return _name; }
-  [[nodiscard]] const VkApplicationInfo& info() const { return _info; }
-  [[nodiscard]] const context::VkConfig& config() const { return _config; }
-  [[nodiscard]] const context::GLFW& glfw() const { return _glfw; }
-  [[nodiscard]] const context::Vulkan& vulkan() const { return _vulkan; }
+  [[nodiscard]] const feature::GLFW& glfw() const { return _glfw; }
+  [[nodiscard]] const feature::Vulkan& vulkan() const { return _vulkan; }
 
   bool operator!() const;
 };

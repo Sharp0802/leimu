@@ -32,6 +32,7 @@ using f64 = double;
 #include <set>
 #include <vector>
 #include <string>
+#include <memory>
 
 inline VkResult CreateDebugUtilsMessengerEXT(
   VkInstance instance,

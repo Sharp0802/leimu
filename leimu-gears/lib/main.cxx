@@ -1,7 +1,9 @@
 #include <leimu/leimu.h>
 
 int main(int, char* argv[]) {
-  leimu::App app(argv[0]);
+  const leimu::Config config{};
+
+  leimu::App app(argv[0], config);
   if (!app) {
     return EXIT_FAILURE;
   }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <iosfwd>
+#include "leimu/framework.h"
 
 namespace leimu {
   std::ostream& outs();

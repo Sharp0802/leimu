@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "leimu/framework.h"
 
 #include "leimu/App.h"
@@ -13,8 +15,8 @@ static VkApplicationInfo CreateAppInfo(const std::string &name) {
   };
 }
 
-leimu::ContextLifetimeNote::ContextLifetimeNote(const std::string &init, const std::string &fini)
-  : _finiNote(fini) {
+leimu::ContextLifetimeNote::ContextLifetimeNote(const std::string &init, std::string fini)
+  : _finiNote(std::move(fini)) {
 
   std::println(outs(), "[init] {}", init);
 }
@@ -23,11 +25,11 @@ leimu::ContextLifetimeNote::~ContextLifetimeNote() {
   std::println(outs(), "[fini] {}", _finiNote);
 }
 
-leimu::App::App(std::string name)
+leimu::App::App(std::string name, Config config)
   : _beginNote("application initializing...", "application closed"),
 
     _name(std::move(name)),
-    _info(CreateAppInfo(_name)),
+    _config(config),
     _vulkan(*this),
 
     _endNote("application initialized", "application closing...") {
