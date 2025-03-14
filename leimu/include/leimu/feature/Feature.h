@@ -16,7 +16,7 @@ namespace leimu {
     operator bool() const { return !!*this; }
   };
 
-  template <typename TSelf>
+  template<typename TSelf>
   class Feature : public FeatureBase {
   public:
     Feature() : FeatureBase(TSelf::name()) {

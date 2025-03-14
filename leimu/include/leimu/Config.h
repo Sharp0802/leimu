@@ -1,21 +1,24 @@
 #pragma once
 
-#include <memory>
+#include "framework.h"
+
+#include "Reactive.h"
+#include "leimu/config/VkConfig.h"
 
 namespace leimu {
-  template<typename T>
-  struct Options {
-    static_assert(std::is_base_of_v<Options<T>, T>);
-  };
-
   struct Config_T {
+    Reactive<config::VkConfig> vulkan;
 
+    Config_T(config::VkConfig vk) : vulkan(vk) {}
   };
 
   class Config {
-    std::shared_ptr<Config_T> _config = std::make_shared<Config_T>();
+    std::shared_ptr<Config_T> _config;
 
   public:
-    Config_T* operator->() const noexcept { return _config.operator->(); }
+    template<typename... TArgs>
+    Config(TArgs&&... args) : _config(std::make_shared<Config_T>(std::forward<TArgs>(args)...)) {}
+
+    Config_T *operator->() const noexcept { return _config.operator->(); }
   };
 }

@@ -4,17 +4,6 @@
 
 #include "leimu/App.h"
 
-static VkApplicationInfo CreateAppInfo(const std::string &name) {
-  return {
-    .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-    .pApplicationName = name.data(),
-    .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-    .pEngineName = name.data(),
-    .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-    .apiVersion = VK_API_VERSION_1_0,
-  };
-}
-
 leimu::ContextLifetimeNote::ContextLifetimeNote(const std::string &init, std::string fini)
   : _finiNote(std::move(fini)) {
 
@@ -29,7 +18,7 @@ leimu::App::App(std::string name, Config config)
   : _beginNote("application initializing...", "application closed"),
 
     _name(std::move(name)),
-    _config(config),
+    _config(std::move(config)),
     _vulkan(*this),
 
     _endNote("application initialized", "application closing...") {

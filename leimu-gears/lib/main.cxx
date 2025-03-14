@@ -1,7 +1,9 @@
 #include <leimu/leimu.h>
 
 int main(int, char* argv[]) {
-  const leimu::Config config{};
+  const leimu::Config config{
+    leimu::config::VkConfig{}
+  };
 
   leimu::App app(argv[0], config);
   if (!app) {

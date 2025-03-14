@@ -31,6 +31,8 @@ constexpr VkDebugUtilsMessengerCreateInfoEXT DebugMessengerCreateInfo{
   .pUserData = nullptr
 };
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "ConstantFunctionResult"
 // ReSharper disable once CppDFAConstantFunctionResult
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
   const VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -57,6 +59,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 
   return VK_FALSE;
 }
+#pragma clang diagnostic pop
 
 // ReSharper disable once CppDeclaratorNeverUsed
 // NOLINTNEXTLINE(*-reserved-identifier)
@@ -564,7 +567,11 @@ leimu::feature::VulkanQueue leimu::feature::GetQueue(
 }
 
 leimu::feature::Vulkan::Vulkan(const App &app) {
-  if (!((_instance = CreateInstance(app.info())))) {
+  VkApplicationInfo info{
+    .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+    .apiVersion = VK_API_VERSION_1_0,
+  };
+  if (!((_instance = CreateInstance(info)))) {
     std::println(errs(), "[vulkan] Failed to create instance");
     return;
   }
@@ -606,7 +613,7 @@ leimu::feature::Vulkan::Vulkan(const App &app) {
     return;
   }
 
-  if (!((_swapchain = CreateSwapchain(_physicalDevice, _device, _surface, app.glfw(), false)))) {
+  if (!((_swapchain = CreateSwapchain(_physicalDevice, _device, _surface, app.glfw(), app.config()->vulkan().latencyRelaxed)))) {
     std::println(errs(), "[vulkan] Failed to create swapchain");
     return;
   }
