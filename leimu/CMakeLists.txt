@@ -10,3 +10,4 @@ target_link_libraries(leimu PUBLIC
         imgui
         vulkan
 )
+target_precompile_headers(leimu PUBLIC include/leimu/framework.h)
