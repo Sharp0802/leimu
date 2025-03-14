@@ -115,8 +115,6 @@ namespace leimu::feature {
   public:
     explicit Vulkan(const App &app);
 
-    ~Vulkan() override;
-
     static std::string name() { return "Vulkan"; }
 
     bool operator!() const override;
