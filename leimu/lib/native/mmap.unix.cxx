@@ -34,7 +34,7 @@ leimu::native::FileMapping leimu::native::CreateFileMapping(std::filesystem::pat
   return FileMapping(
       new FileMapping_T{p, static_cast<size_t>(st.st_size)},
       [=](const FileMapping_T *self) {
-        if (!((munmap(self->p, self->size)))) {
+        if (!((munmap(const_cast<void*>(self->ptr()), self->size())))) {
           std::println(leimu::errs(), "[mmap.unix] Couldn't munmap file '{}': {}", path.string(), strerror(errno));
         }
       }
