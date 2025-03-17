@@ -10,13 +10,13 @@
 
 leimu::native::FileMapping leimu::native::CreateFileMapping(std::filesystem::path path) noexcept {
   int fd;
-  if (!((fd = open(path.c_str(), O_RDONLY)))) {
+  if ((fd = open(path.c_str(), O_RDONLY)) == -1) {
     std::println(leimu::errs(), "[mmap.unix] Couldn't open file '{}': {}", path.string(), strerror(errno));
     return nullptr;
   }
 
   struct stat st;
-  if (!fstat(fd, &st)) {
+  if (fstat(fd, &st)) {
     std::println(leimu::errs(), "[mmap.unix] Couldn't stat file '{}': {}", path.string(), strerror(errno));
     return nullptr;
   }
@@ -34,7 +34,7 @@ leimu::native::FileMapping leimu::native::CreateFileMapping(std::filesystem::pat
   return FileMapping(
       new FileMapping_T{p, static_cast<size_t>(st.st_size)},
       [=](const FileMapping_T *self) {
-        if (!((munmap(const_cast<void*>(self->ptr()), self->size())))) {
+        if (munmap(const_cast<void*>(self->ptr()), self->size())) {
           std::println(leimu::errs(), "[mmap.unix] Couldn't munmap file '{}': {}", path.string(), strerror(errno));
         }
       }
