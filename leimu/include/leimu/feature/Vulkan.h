@@ -137,6 +137,16 @@ namespace leimu::feature {
   public:
     explicit Vulkan(const App &app);
 
+#define LEIMU_GETTER(p) [[nodiscard]] const decltype(_##p) & p () const { return _##p ; }
+    LEIMU_GETTER(instance)
+    LEIMU_GETTER(surface)
+    LEIMU_GETTER(physicalDevice)
+    LEIMU_GETTER(device)
+    LEIMU_GETTER(graphicsQueue)
+    LEIMU_GETTER(presentQueue)
+    LEIMU_GETTER(swapchain)
+#undef LEIMU_GETTER
+
     static std::string name() { return "Vulkan"; }
 
     bool operator!() const override;
