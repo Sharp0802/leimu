@@ -33,6 +33,8 @@ using f64 = double;
 #include <vector>
 #include <string>
 #include <memory>
+#include <filesystem>
+#include <fstream>
 
 #if LEIMU_DEBUG
 inline VkResult CreateDebugUtilsMessengerEXT(
