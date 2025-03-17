@@ -490,7 +490,7 @@ leimu::feature::VulkanSwapchain leimu::feature::CreateSwapchain(
     const VulkanSurface &surface,
     const VulkanSurfaceInfo &surfaceInfo,
     VkExtent2D extent,
-    const VulkanQueueFamilyIndices& families) noexcept {
+    const VulkanQueueFamilyIndices &families) noexcept {
 
   u32 nImage = surfaceInfo->capabilities.minImageCount + 1;
   if (surfaceInfo->capabilities.maxImageCount > 0 && nImage > surfaceInfo->capabilities.maxImageCount) {
@@ -569,6 +569,59 @@ leimu::feature::VulkanSurfaceInfo leimu::feature::RetrieveSurfaceInfo(
   return std::make_shared<VkSurfaceInfo_T>(capabilities, format, present);
 }
 
+std::vector<VkImage> leimu::feature::GetImages(
+    const leimu::feature::VulkanDevice &device,
+    const leimu::feature::VulkanSwapchain &swapchain) noexcept {
+  u32 nImage;
+  vkAssert(vkGetSwapchainImagesKHR(device.get(), swapchain.get(), &nImage, nullptr));
+
+  std::vector<VkImage> images(nImage);
+  vkAssert(vkGetSwapchainImagesKHR(device.get(), swapchain.get(), &nImage, images.data()));
+
+  return images;
+}
+
+std::vector<leimu::feature::VulkanImageView> leimu::feature::CreateImageViews(
+    const VulkanDevice& device,
+    const std::vector<VkImage> &images,
+    const leimu::feature::VulkanSurfaceInfo &surfaceInfo) {
+
+  std::vector<VulkanImageView> views(images.size());
+  for (auto i = 0; i < images.size(); ++i) {
+    VkImageViewCreateInfo createInfo{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = images[i],
+      .viewType = VK_IMAGE_VIEW_TYPE_2D,
+      .format = surfaceInfo->format.format,
+      .components = {
+          VK_COMPONENT_SWIZZLE_IDENTITY,
+          VK_COMPONENT_SWIZZLE_IDENTITY,
+          VK_COMPONENT_SWIZZLE_IDENTITY,
+          VK_COMPONENT_SWIZZLE_IDENTITY,
+      },
+      .subresourceRange = {
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = 1,
+          .baseArrayLayer = 0,
+          .layerCount = 1
+      }
+    };
+
+    VkImageView view;
+    if (vkCreateImageView(device.get(), &createInfo, nullptr, &view) != VK_SUCCESS) {
+      std::println(errs(), "[vulkan] Failed to create view from swapchain image");
+      return {};
+    }
+
+    views[i] = VulkanImageView(view, [=](const VkImageView self) {
+      vkDestroyImageView(device.get(), self, nullptr);
+    });
+  }
+
+  return views;
+}
+
 leimu::feature::Vulkan::Vulkan(const App &app) {
   VkApplicationInfo info{
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -627,18 +680,18 @@ leimu::feature::Vulkan::Vulkan(const App &app) {
     std::println(errs(), "[vulkan] Failed to create swapchain");
     return;
   }
+
+  if (((_swapchainImages = GetImages(_device, _swapchain))).empty()) {
+    std::println(errs(), "[vulkan] Failed to get swapchain images");
+    return;
+  }
+
+  if (((_swapchainViews = CreateImageViews(_device, _swapchainImages, _surfaceInfo))).empty()) {
+    std::println(errs(), "[vulkan] Failed to create swapchain views");
+    return;
+  }
 }
 
 bool leimu::feature::Vulkan::operator!() const {
-  return !_instance
-         #if LEIMU_DEBUG
-         || !_debugMessenger
-         #endif
-         || !_surface
-         || !_physicalDevice
-         || !_queueIndices
-         || !_device
-         || !_graphicsQueue
-         || !_presentQueue
-         || !_swapchain;
+  return _swapchainViews.empty();
 }
