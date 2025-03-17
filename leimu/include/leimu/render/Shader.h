@@ -7,12 +7,12 @@ namespace leimu::render {
 
   using Shader = std::shared_ptr<VkShaderModule_T>;
 
-  static Shader CreateShader(
+  Shader CreateShader(
       feature::VulkanDevice device,
       size_t size,
       const void *code) noexcept;
 
-  static Shader CreateShaderFromFile(
+  Shader CreateShaderFromFile(
       feature::VulkanDevice device,
       std::filesystem::path path);
 }

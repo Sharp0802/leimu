@@ -56,29 +56,30 @@ namespace leimu::feature {
         });
   }
 
-  [[nodiscard]] std::optional<VkSurfaceCapabilitiesKHR> GetSurfaceCapabilities(
+  [[nodiscard]] static std::optional<VkSurfaceCapabilitiesKHR> GetSurfaceCapabilities(
       const VulkanPhysicalDevice &device,
       const VulkanSurface &surface);
-  [[nodiscard]] std::vector<VkPresentModeKHR> GetPresentModes(
+  [[nodiscard]] static std::vector<VkPresentModeKHR> GetPresentModes(
       const VulkanPhysicalDevice &device,
       const VulkanSurface &surface) noexcept;
-  [[nodiscard]] std::vector<VkSurfaceFormatKHR> GetSurfaceFormats(
+  [[nodiscard]] static std::vector<VkSurfaceFormatKHR> GetSurfaceFormats(
       const VulkanPhysicalDevice &device,
       const VulkanSurface &surface) noexcept;
-  [[nodiscard]] VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats) noexcept;
-  [[nodiscard]] VkPresentModeKHR ChooseSwapPresentMode(
+  [[nodiscard]] static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(
+      const std::vector<VkSurfaceFormatKHR> &formats) noexcept;
+  [[nodiscard]] static VkPresentModeKHR ChooseSwapPresentMode(
       const std::vector<VkPresentModeKHR> &modes,
       bool lowEnergy) noexcept;
-  [[nodiscard]] VkExtent2D ChooseSwapExtent(
+  [[nodiscard]] static VkExtent2D ChooseSwapExtent(
       const VkSurfaceCapabilitiesKHR &cap,
       const GLFW &glfw) noexcept;
-  [[nodiscard]] int RatePhysicalDeviceSuitability(
+  [[nodiscard]] static int RatePhysicalDeviceSuitability(
       const VulkanPhysicalDevice &device,
       const VulkanSurface &surface) noexcept;
 
-  [[nodiscard]] VulkanInstance CreateInstance(VkApplicationInfo info) noexcept;
+  [[nodiscard]] static VulkanInstance CreateInstance(VkApplicationInfo info) noexcept;
 #if LEIMU_DEBUG
-  [[nodiscard]] VulkanDebugUtilsMessenger CreateDebugUtilsMessenger(const VulkanInstance &instance) noexcept;
+  [[nodiscard]] static VulkanDebugUtilsMessenger CreateDebugUtilsMessenger(const VulkanInstance &instance) noexcept;
 #endif
   [[nodiscard]] static VulkanSurface CreateSurface(
       const VulkanInstance &instance,
